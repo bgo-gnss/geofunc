@@ -2,12 +2,29 @@
 
 Tier 0 foundation library. Coordinate reference-frame conversions live in
 :mod:`geofunc.coords`; geodesy math (ellipsoidal/Cartesian conversions,
-plate motion) in :mod:`geofunc.geo`.
+plate motion) in :mod:`geofunc.geo`; ECEF/geodetic/local transformations
+with covariance propagation (numpy only) in :mod:`geofunc.local`.
 """
 
 __path__ = __import__("pkgutil").extend_path(__path__, __name__)
 
-from .coords import CoordFrame, FRAMES, frame_names, get_frame, transform
+# Lazy re-export: ``geofunc.coords`` imports pyproj, which must not ride along
+# with ``import geofunc.local`` (the numpy-only core used by leaf packages).
+# Submodules stay reachable as attributes after a bare ``import geofunc``
+# (the old eager import made ``geofunc.coords`` work that way).
+_COORDS = ("CoordFrame", "FRAMES", "frame_names", "get_frame", "transform")
+_SUBMODULES = ("coords", "geo", "geofunc", "local")
+
+
+def __getattr__(name: str):  # PEP 562
+    import importlib
+
+    if name in _COORDS:
+        return getattr(importlib.import_module(".coords", __name__), name)
+    if name in _SUBMODULES:
+        return importlib.import_module(f".{name}", __name__)
+    raise AttributeError(f"module 'geofunc' has no attribute {name!r}")
+
 
 __all__ = [
     "CoordFrame",
