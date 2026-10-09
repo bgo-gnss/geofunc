@@ -77,6 +77,7 @@ def test_package_reexports_still_work_lazily() -> None:
     import geofunc
 
     assert callable(geofunc.transform)
+    assert callable(geofunc.coords.get_frame)  # submodule as attribute, as before
     with pytest.raises(AttributeError):
         _ = geofunc.no_such_name
 
