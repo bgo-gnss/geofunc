@@ -62,18 +62,27 @@ __all__ = [
     "Ellipsoid",
     "Geodetic",
     "Local",
+    "apply_local_offsets",
     "baseline",
+    "chain",
     "displacements",
+    "ecef_jacobian",
     "ecef_to_geodetic",
     "ecef_to_local",
+    "euler_matrix",
+    "euler_velocity",
     "geodetic_jacobian",
     "geodetic_to_ecef",
+    "globk_scale",
     "helmert_apply",
+    "helmert_at",
     "helmert_design",
+    "linear_motion",
     "local_rotation",
     "local_to_ecef",
     "propagate",
     "radii",
+    "reference_position",
 ]
 
 FloatArray = NDArray[np.float64]
@@ -151,6 +160,21 @@ def propagate(jac: ArrayLike, cov: ArrayLike) -> FloatArray:
     j = np.asarray(jac, dtype=np.float64)
     c = np.asarray(cov, dtype=np.float64)
     out: FloatArray = np.matmul(np.matmul(j, c), np.swapaxes(j, -1, -2))
+    return out
+
+
+def chain(*jacs: ArrayLike) -> FloatArray:
+    """Jacobian of a composed map: ``chain(J1, J2, J3) = J3·J2·J1``.
+
+    Arguments are in the order the maps are APPLIED (first map first), each
+    ``(..., k, m)``; leading axes broadcast. ``propagate(chain(...), C)``
+    then carries a covariance through the whole chain in one step.
+    """
+    if not jacs:
+        raise ValueError("chain: need at least one Jacobian")
+    out = np.asarray(jacs[0], dtype=np.float64)
+    for j in jacs[1:]:
+        out = np.matmul(np.asarray(j, dtype=np.float64), out)
     return out
 
 
@@ -250,6 +274,43 @@ def geodetic_jacobian(xyz: ArrayLike, *, ellipsoid: Ellipsoid = GRS80) -> FloatA
     return scale[..., :, None] * local_rotation(g.lat, g.lon)
 
 
+def ecef_jacobian(
+    lat: ArrayLike, lon: ArrayLike, h: ArrayLike, *, ellipsoid: Ellipsoid = GRS80
+) -> FloatArray:
+    """``∂(X, Y, Z)/∂(lat, lon, h)`` ``(..., 3, 3)``: the inverse of :func:`geodetic_jacobian`.
+
+    Columns are the local north, east and up unit vectors scaled by
+    ``M+h``, ``(N+h)·cos φ`` and 1. Propagates a geodetic covariance
+    (rad², rad², m²) to ECEF.
+    """
+    lat_, lon_, h_ = np.broadcast_arrays(
+        *(np.asarray(v, dtype=np.float64) for v in (lat, lon, h))
+    )
+    m, n = radii(lat_, ellipsoid=ellipsoid)
+    scale = np.stack([m + h_, (n + h_) * np.cos(lat_), np.ones_like(h_)], -1)
+    return np.swapaxes(local_rotation(lat_, lon_), -1, -2) * scale[..., None, :]
+
+
+def globk_scale(
+    lat: ArrayLike, h: ArrayLike, lat0: float, *, ellipsoid: Ellipsoid = GRS80
+) -> FloatArray:
+    """Per-axis factor ``(..., 3)`` from geodetic local N/E/U to the GLOBK ``Loc.`` convention.
+
+    ``(a/(M+h), a·cos φ₀/((N+h)·cos φ), 1)`` at each point: multiply the
+    geodetic-frame rows by it to get ``dN = a·Δφ``, ``dE = a·cos φ₀·Δλ``
+    to first order (see the module docstring).
+    """
+    lat_, h_ = np.broadcast_arrays(
+        np.asarray(lat, dtype=np.float64), np.asarray(h, dtype=np.float64)
+    )
+    m, n = radii(lat_, ellipsoid=ellipsoid)
+    a = ellipsoid.a
+    return np.stack(
+        [a / (m + h_), a * np.cos(lat0) / ((n + h_) * np.cos(lat_)), np.ones_like(h_)],
+        -1,
+    )
+
+
 def ecef_to_local(
     dxyz: ArrayLike,
     lat: ArrayLike,
@@ -320,14 +381,80 @@ def displacements(
     )
     out_cov = None
     if c is not None:
-        m, n = radii(g.lat, ellipsoid=ellipsoid)
-        scale = np.stack(
-            [a / (m + g.h), a * cos0 / ((n + g.h) * np.cos(g.lat)), np.ones_like(g.h)],
-            -1,
-        )
+        scale = globk_scale(g.lat, g.h, float(g0.lat), ellipsoid=ellipsoid)
         jac = scale[..., :, None] * local_rotation(g.lat, g.lon)
         out_cov = propagate(jac[..., perm, :], c)
     return Local(d[..., perm], out_cov)
+
+
+def reference_position(
+    xyz: ArrayLike,
+    *,
+    cov: ArrayLike | None = None,
+    how: Literal["mean", "wmean", "median", "first"] = "wmean",
+    count: int | None = None,
+) -> FloatArray:
+    """One reference point ``(3,)`` from a position series ``xyz (n, 3)``.
+
+    ``how``: ``"mean"``, ``"median"`` (per axis), ``"first"`` epoch, or
+    ``"wmean"`` — the least-squares mean ``(Σ C⁻¹)⁻¹·Σ C⁻¹x`` with the full
+    3×3 ``cov (n, 3, 3)`` (plain mean without ``cov``). Rows with a
+    non-finite coordinate or covariance are skipped. ``count`` limits the
+    estimate to the first ``count`` usable epochs (e.g. 5: the old
+    "zero on the first week" plot habit). Use it as ``ref`` of
+    :func:`displacements`, or pass an a-priori coordinate there instead.
+    """
+    x = _points(xyz, "xyz")
+    if x.ndim != 2:
+        raise ValueError(f"xyz: expected a series (n, 3), got {x.shape}")
+    ok = np.all(np.isfinite(x), axis=-1)
+    c = None
+    if cov is not None:
+        c = _covs(cov, "cov")
+        if c.shape != x.shape + (3,):
+            raise ValueError(f"cov: expected {x.shape + (3,)}, got {c.shape}")
+        ok &= np.all(np.isfinite(c), axis=(-2, -1))
+    idx = np.flatnonzero(ok)
+    if count is not None:
+        idx = idx[:count]
+    if idx.size == 0:
+        raise ValueError("reference_position: no usable epochs")
+    x = x[idx]
+    if how == "first":
+        return x[0].copy()
+    if how == "median":
+        out: FloatArray = np.median(x, axis=0)
+        return out
+    if how == "mean" or (how == "wmean" and c is None):
+        return x.mean(axis=0)
+    if how != "wmean":
+        raise ValueError(f"how must be mean/wmean/median/first, got {how!r}")
+    w = np.linalg.inv(c[idx])  # type: ignore[index]
+    x0 = x[0]  # centre first: keeps the 6e6 m magnitudes out of the sums
+    rhs = np.matmul(w, (x - x0)[..., None])[..., 0].sum(axis=0)
+    return x0 + np.linalg.solve(w.sum(axis=0), rhs)
+
+
+def apply_local_offsets(
+    xyz: ArrayLike,
+    dlocal: ArrayLike,
+    *,
+    order: Order = "neu",
+    ellipsoid: Ellipsoid = GRS80,
+) -> FloatArray:
+    """Add local offsets ``dlocal (..., 3)`` to ECEF positions ``xyz (..., 3)``.
+
+    Each offset is rotated to ECEF in the local frame of ITS OWN point,
+    ``x + R(φᵢ, λᵢ)ᵀ·dᵢ`` — an antenna-height or junction correction along
+    the station's up, an eccentricity, etc. Applied to the coordinates
+    before any displacement is derived, every product made from them
+    inherits it. Deterministic, so a covariance is unchanged. Zero rows
+    leave their point exactly as it was.
+    """
+    x = _points(xyz, "xyz")
+    d = np.broadcast_to(_points(dlocal, "dlocal"), x.shape)
+    g = ecef_to_geodetic(x, ellipsoid=ellipsoid)
+    return x + local_to_ecef(d, g.lat, g.lon, order=order).d
 
 
 def baseline(
@@ -356,6 +483,71 @@ def baseline(
         return Local(d, None)
     c = _covs(cov, "cov", width=6)
     return Local(d, propagate(np.concatenate([r, -r], axis=-1), c))
+
+
+def euler_matrix(xyz: ArrayLike) -> FloatArray:
+    """``(..., 3, 3)`` matrix ``E(x)`` with ``ω × x = E(x)·ω`` (``E = −[x]×``).
+
+    Linear in ω, so a pole covariance propagates as ``E·C_ω·Eᵀ``.
+    """
+    x = _points(xyz, "xyz")
+    X, Y, Z = x[..., 0], x[..., 1], x[..., 2]
+    z = np.zeros_like(X)
+    return np.stack(
+        [
+            np.stack([z, Z, -Y], axis=-1),
+            np.stack([-Z, z, X], axis=-1),
+            np.stack([Y, -X, z], axis=-1),
+        ],
+        axis=-2,
+    )
+
+
+def euler_velocity(
+    omega: ArrayLike, xyz: ArrayLike, *, cov_omega: ArrayLike | None = None
+) -> Local:
+    """Rigid-rotation velocity ``v = ω × x`` in ECEF (``Local.d``), with covariance.
+
+    ``omega`` is the Cartesian rotation vector ``(3,)`` (rad per time unit,
+    e.g. rad/yr → m/yr), ``xyz (..., 3)``. Plate-motion poles come from a
+    plate model table; rotate ``v`` to N/E/U with :func:`ecef_to_local`.
+    """
+    w = _points(omega, "omega")
+    e = euler_matrix(xyz)
+    v = np.matmul(e, w[..., None])[..., 0]
+    if cov_omega is None:
+        return Local(v, None)
+    return Local(v, propagate(e, _covs(cov_omega, "cov_omega")))
+
+
+def linear_motion(velocity: ArrayLike, t: ArrayLike, *, t0: float) -> FloatArray:
+    """Displacement ``v·(t − t0)`` ``(..., 3)`` of a constant velocity.
+
+    ``velocity (..., 3)`` and the epochs ``t (...)`` broadcast (one
+    velocity over a series, or one per point). Subtract it from ECEF
+    positions to remove secular motion, add it to move a coordinate to
+    another epoch. Units follow the inputs (m/yr with years).
+    """
+    v = _points(velocity, "velocity")
+    dt = np.asarray(t, dtype=np.float64) - t0
+    out: FloatArray = v * dt[..., None]
+    return out
+
+
+def helmert_at(
+    params: ArrayLike, rates: ArrayLike, t: ArrayLike, *, t0: float
+) -> FloatArray:
+    """Time-dependent 7-parameter set at epochs ``t``: ``p + ṗ·(t − t0)`` → ``(..., 7)``.
+
+    Same parameter order and units as :func:`helmert_design`; the rates per
+    the unit of ``t``. Feed the result to :func:`helmert_apply` (one set
+    per epoch broadcasts against a series).
+    """
+    p = _points(params, "params", width=7)
+    r = _points(rates, "rates", width=7)
+    dt = np.asarray(t, dtype=np.float64) - t0
+    out: FloatArray = p + r * dt[..., None]
+    return out
 
 
 def helmert_design(xyz: ArrayLike) -> FloatArray:
@@ -392,18 +584,26 @@ def helmert_apply(
     blocks: the cross-point correlation ``A_i C_p A_jᵀ`` that a common
     parameter set induces is NOT represented — build the full network
     matrix from :func:`helmert_design` when it matters.
-    ``Local.d`` holds the transformed ECEF positions.
+    ``params`` is one set ``(7,)`` or one per point ``(..., 7)`` (e.g. from
+    :func:`helmert_at` for a time series). ``Local.d`` holds the
+    transformed ECEF positions.
     """
     x = _points(xyz, "xyz")
-    p = np.asarray(params, dtype=np.float64)
-    if p.shape != (7,):
-        raise ValueError(f"params: expected (7,), got {p.shape}")
+    p = _points(params, "params", width=7)
     a = helmert_design(x)
-    out = x + np.matmul(a, p)
+    out = x + np.matmul(a, p[..., None])[..., 0]
     if cov is None and params_cov is None:
         return Local(out, None)
-    _, _, _, dsc, rx, ry, rz = p
-    jx = np.array([[1 + dsc, -rz, ry], [rz, 1 + dsc, -rx], [-ry, rx, 1 + dsc]])
+    dsc, rx, ry, rz = (p[..., k] for k in range(3, 7))
+    o = 1.0 + dsc
+    jx = np.stack(
+        [
+            np.stack([o, -rz, ry], axis=-1),
+            np.stack([rz, o, -rx], axis=-1),
+            np.stack([-ry, rx, o], axis=-1),
+        ],
+        axis=-2,
+    )
     c = np.zeros(x.shape + (3,)) if cov is None else propagate(jx, _covs(cov, "cov"))
     if params_cov is not None:
         c = c + propagate(a, _covs(params_cov, "params_cov", width=7))

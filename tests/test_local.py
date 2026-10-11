@@ -263,6 +263,116 @@ def test_helmert_inverse_is_the_negated_parameters_to_first_order() -> None:
     np.testing.assert_allclose(back, REYK, atol=1e-7)  # second-order residue
 
 
+# --- composition helpers (2026-10-11) -----------------------------------------
+
+
+def test_ecef_jacobian_inverts_the_geodetic_jacobian_and_chains() -> None:
+    g = local.ecef_to_geodetic(REYK)
+    jg = local.geodetic_jacobian(REYK)
+    je = local.ecef_jacobian(g.lat, g.lon, g.h)
+    # ECEF → geodetic → ECEF is dimensionless; the other way mixes m and rad
+    np.testing.assert_allclose(local.chain(jg, je), np.eye(3), atol=1e-12)
+    np.testing.assert_allclose(local.chain(je, jg), np.eye(3), atol=1e-9)
+    # ecef_jacobian against finite differences of geodetic_to_ecef
+    step = np.array([1e-9, 1e-9, 1e-3])
+    fd = np.empty((3, 3))
+    for k in range(3):
+        e = np.zeros(3)
+        e[k] = step[k]
+        up = local.geodetic_to_ecef(*(np.array(g) + e))
+        dn = local.geodetic_to_ecef(*(np.array(g) - e))
+        fd[:, k] = (up - dn) / (2 * step[k])
+    np.testing.assert_allclose(je, fd, rtol=1e-6)
+
+
+def test_chain_order_is_application_order() -> None:
+    a, b = _spd(3, 1), _spd(3, 2)
+    np.testing.assert_allclose(local.chain(a, b), b @ a)
+    with pytest.raises(ValueError, match="at least one"):
+        local.chain()
+
+
+def test_globk_scale_is_the_displacement_jacobian_factor() -> None:
+    g = local.ecef_to_geodetic(REYK)
+    m, n = local.radii(g.lat)
+    a = local.GRS80.a
+    np.testing.assert_allclose(
+        local.globk_scale(g.lat, g.h, float(g.lat)), [a / (m + g.h), a / (n + g.h), 1.0]
+    )
+
+
+def test_reference_position_modes() -> None:
+    rng = np.random.default_rng(3)
+    x = REYK + rng.normal(scale=0.003, size=(50, 3))
+    np.testing.assert_allclose(local.reference_position(x, how="mean"), x.mean(0))
+    np.testing.assert_allclose(
+        local.reference_position(x, how="median"), np.median(x, 0)
+    )
+    np.testing.assert_allclose(local.reference_position(x, how="first"), x[0])
+    np.testing.assert_allclose(
+        local.reference_position(x, how="mean", count=5), x[:5].mean(0)
+    )
+    c = np.broadcast_to(_spd(3, 4), (50, 3, 3))
+    # equal covariances: the least-squares mean is the plain mean
+    np.testing.assert_allclose(local.reference_position(x, cov=c), x.mean(0), atol=1e-9)
+    # a much better epoch dominates; NaN rows are skipped
+    c2 = np.array(c)
+    c2[7] *= 1e-6
+    x2 = x.copy()
+    x2[3] = np.nan
+    np.testing.assert_allclose(local.reference_position(x2, cov=c2), x[7], atol=1e-5)
+    with pytest.raises(ValueError, match="no usable"):
+        local.reference_position(np.full((3, 3), np.nan))
+
+
+def test_apply_local_offsets_moves_along_each_points_own_axes() -> None:
+    x = np.stack([REYK, VFLN_XYZ])
+    d = np.array([[0.0, 0.0, 1.093], [0.0, 0.0, 0.0]])
+    out = local.apply_local_offsets(x, d)
+    g0, g1 = local.ecef_to_geodetic(x), local.ecef_to_geodetic(out)
+    np.testing.assert_allclose(g1.h - g0.h, [1.093, 0.0], atol=1e-9)
+    np.testing.assert_allclose(g1.lat, g0.lat, atol=1e-15)
+    np.testing.assert_allclose(g1.lon, g0.lon, atol=1e-15)
+    np.testing.assert_array_equal(out[1], x[1])
+    # an east offset is an east displacement in the point's own frame
+    e = local.apply_local_offsets(REYK, [0.0, 0.25, 0.0])
+    np.testing.assert_allclose(local.displacements(e, REYK).d, [0, 0.25, 0], atol=1e-9)
+
+
+def test_euler_velocity_is_the_cross_product_with_covariance() -> None:
+    w = np.array([-0.085, -0.531, 0.770]) * np.pi / 180 / 3600e3  # mas/yr → rad/yr
+    x = np.stack([REYK, VFLN_XYZ])
+    v = local.euler_velocity(w, x, cov_omega=np.eye(3) * 1e-20)
+    np.testing.assert_allclose(v.d, np.cross(w, x), atol=1e-15)
+    e = local.euler_matrix(x)
+    np.testing.assert_allclose(v.cov, e @ (np.eye(3) * 1e-20) @ np.swapaxes(e, 1, 2))
+    # Eurasia at Reykjavik moves ~2 cm/yr, horizontally up to the
+    # ellipsoid-vs-sphere tilt (ω × x is normal to the geocentric radius)
+    neu = local.displacements(REYK + v.d[0], REYK).d
+    assert 0.015 < np.hypot(neu[0], neu[1]) < 0.03 and abs(neu[2]) < 1e-4
+
+
+def test_linear_motion_broadcasts_over_epochs() -> None:
+    t = np.array([2020.0, 2021.5])
+    out = local.linear_motion([0.01, -0.02, 0.0], t, t0=2020.0)
+    np.testing.assert_allclose(out, [[0, 0, 0], [0.015, -0.03, 0]])
+
+
+def test_helmert_at_per_epoch_equals_one_call_per_epoch() -> None:
+    p0 = np.array([0.001, -0.002, 0.003, 1e-9, 2e-9, -1e-9, 5e-10])
+    rates = np.array([1e-4, 0, -1e-4, 1e-10, 0, 1e-10, 0])
+    t = np.array([2005.0, 2015.0, 2025.0])
+    ps = local.helmert_at(p0, rates, t, t0=2010.0)
+    np.testing.assert_allclose(ps[1], p0 + 5 * rates)
+    x = np.stack([REYK, REYK + 0.1, REYK - 0.1])
+    c = np.broadcast_to(_spd(3, 5), (3, 3, 3))
+    batch = local.helmert_apply(x, ps, cov=c)
+    for k in range(3):
+        one = local.helmert_apply(x[k], ps[k], cov=c[k])
+        np.testing.assert_allclose(batch.d[k], one.d, atol=1e-9)
+        np.testing.assert_allclose(batch.cov[k], one.cov, atol=1e-20)
+
+
 # --- refusals ---------------------------------------------------------------
 
 
