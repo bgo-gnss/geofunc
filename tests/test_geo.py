@@ -65,8 +65,6 @@ def wanda_test():
         1313.5007,
     ]  # ( 2188616.19513 5021830.02567 3258378.79998)
 
-    qlab_llh = [66.65990429, 30.7311514, 1542.7027]
-
     ## transforming to earth centered cartasian coordinates according to ITRF2008
     chmn_ECEF = proj.transform(
         wgs84, itrf2008, *chmn_llh
@@ -99,28 +97,22 @@ def wanda_test():
 
 
 def general_test():
-    import warnings
 
     import numpy as np
-    import pyproj as proj
 
     import geofunc.geo as geo
 
     # warnings.filterwarnings( "ignore")
 
     eurrotp = geo.platePoles("EURA")
-    noamrotp = geo.platePoles("NOAM")
 
     # itrf2008=proj.Proj("+proj=geocent +ellps=GRS80 +units=m +no_defs") # itrf2008
     # isn2004=proj.Proj("+proj=lcc +lat_1=64.25 +lat_2=65.75 +lat_0=65 +lon_0=-19 +x_0=1700000 +y_0=300000 +no_defs +a=6378137 +rf=298.257222101 +to_meter=1") #isnet 2004
     # isn93=proj.Proj("+proj=lcc +lat_1=64.25 +lat_2=65.75 +lat_0=65 +lon_0=-19 +x_0=500000 +y_0=500000 +no_defs +a=6378137 +rf=298.257222101 +to_meter=1") #isnet 2004
     # wgs84=proj.Proj("+init=EPSG:4326")
 
-    hofn_ECEF = [2679689.95501, -727951.06227, 5722789.47403]
     rhof_ECEF = [2456169.74968, -701823.61767, 5824743.24245]
     vonc_ECEF = [2606031.31317, -834418.62174, 5743215.41035]
-    eldv_ECEF = [2691367.35686, -895785.63215, 5693689.81466]
-    mjsk_ECEF = [2646589.09729, -946176.41746, 5707126.29062]
     coords = np.array(vonc_ECEF)
     # print( coords)
     print("VONC ECEF: %s" % vonc_ECEF)
@@ -207,9 +199,7 @@ def extract_loftn_haed():
 def test_bulkdata():
     """ """
 
-    import cparser as cp
-
-    from geofunc.geo import eccell, isn2004, itrf2008, platePoles, rotpole, wgs84
+    from geofunc.geo import eccell, platePoles, rotpole
 
     eurrotp = platePoles("EURA")
     noamrotp = platePoles("NOAM")
@@ -234,7 +224,6 @@ def test_bulkdata():
     enu_noam_vel = eccell(llh, disp)
     enu_noam_vel = dict(zip(staDict.keys(), enu_noam_vel))
 
-    fmt = "% 3.8f\t% 2.8f\t% 2.8f\t%s"
     with open("station_coord.xyz", "w", encoding="utf-8") as f:
         for key, value in sorted(staDict.items()):
             decoded_key = key.decode("utf-8") if isinstance(key, bytes) else key
@@ -258,17 +247,11 @@ def extr_xyz(site):
     import re
 
     import gtimes.timefunc as tf
-    import numpy as np
-    import pyproj as proj
 
     import geofunc.geofunc as gf
-    from geofunc.geo import isn2004, itrf2008, platePoles, wgs84
 
     slines = []
     smatch = re.compile(site)
-
-    eurrotp = platePoles("EURA")
-    noamrotp = platePoles("NOAM")
 
     # extracting ECEF coordinates from icel.org.bak file
     tmp = gf.extractfromGamitBakf("icel.org.bak", "Unc")
@@ -316,7 +299,6 @@ def test_platevel():
     import cparser as cp
     import geo_dataread.gps_read as gdr
     import numpy as np
-    import pyproj as proj
     from pyproj import Transformer
 
     import geofunc.geo as geo
@@ -344,9 +326,6 @@ def test_platevel():
     )
 
     # ----------------------------------
-
-    Dir = cp.Parser().getPostprocessConfig()["totPath"]
-    StationList = cp.Parser().getStationList()
 
     # f = open('station-plate','w')
     # for station in sorted(StationList):
@@ -439,7 +418,6 @@ def phase_center_coord():
     )
 
     xyz = np.array(list(staDict.values()))
-    llh = np.array(itrf08towgs84.transform(*xyz.transpose(), radians=True)).transpose()
     isn16 = np.array(itrf08toisn16.transform(*xyz.transpose())).transpose()
     isn16 = dict(zip(staDict.keys(), isn16))
 

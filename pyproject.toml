@@ -22,3 +22,17 @@ geofunc = "geofunc:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.mypy]
+# local.py/coords.py are typed; geo.py/geofunc.py are legacy (to be retired)
+
+[[tool.mypy.overrides]]
+module = [
+    "pandas.*",
+    "geopandas.*",
+    "cparser",
+    "gps_parser.*",
+    "gtimes.*",
+    "geo_dataread.*",
+]
+ignore_missing_imports = true

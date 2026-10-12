@@ -11,7 +11,6 @@ from collections import OrderedDict
 import gps_parser as cp
 import numpy as np
 import pandas as pd
-import pyproj as proj
 
 import geofunc.geo as geo
 
@@ -166,7 +165,6 @@ def extractfromGamitBakf(cfile, stations):
     slines = []
 
     site = re.compile(stations)
-    tim = re.compile("Solution refers to", re.IGNORECASE)
     f = open(cfile, "r")
 
     for line in f:

@@ -110,7 +110,6 @@ def extractfromGamitBakf(cfile, stations):
     slines = []
 
     site = re.compile(stations)
-    tim = re.compile("Solution refers to", re.IGNORECASE)
     f = open(cfile, "r")
 
     for line in f:
@@ -201,4 +200,3 @@ def getStationCoordinates(station_list=None):
     df_sloc = pd.DataFrame.from_dict(sta_llh, orient="index")
     df_sloc.columns = ["lon", "lat", "elev"]
     return df_sloc
-

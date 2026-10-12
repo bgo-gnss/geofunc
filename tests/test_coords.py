@@ -21,7 +21,15 @@ REYK_ITRF2008 = (2587383.87, -1043033.57, 5716564.22)  # X, Y, Z
 
 
 def test_registry_has_expected_frames():
-    expected = {"wgs84", "itrf2008", "itrf2014", "itrf2020", "isn93", "isn2004", "isn2016"}
+    expected = {
+        "wgs84",
+        "itrf2008",
+        "itrf2014",
+        "itrf2020",
+        "isn93",
+        "isn2004",
+        "isn2016",
+    }
     assert expected <= set(FRAMES)
     assert frame_names() == tuple(sorted(FRAMES))
 

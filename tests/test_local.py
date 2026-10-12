@@ -61,6 +61,11 @@ def _spd(n: int, seed: int = 0) -> np.ndarray:
     return a @ a.T + np.eye(n) * 1e-7
 
 
+def _cov(x: local.Local) -> np.ndarray:
+    assert x.cov is not None
+    return x.cov
+
+
 def test_import_is_numpy_only() -> None:
     code = (
         "import sys, geofunc.local; "
@@ -149,9 +154,9 @@ def test_local_round_trip_with_covariance_and_broadcasting() -> None:
     loc = local.ecef_to_local(v, g.lat, g.lon, cov=c)
     back = local.local_to_ecef(loc.d, g.lat, g.lon, cov=loc.cov)
     np.testing.assert_allclose(back.d, v, atol=1e-15)
-    np.testing.assert_allclose(back.cov, c, atol=1e-18)
+    np.testing.assert_allclose(_cov(back), c, atol=1e-18)
     r = local.local_rotation(g.lat[1], g.lon[1])
-    np.testing.assert_allclose(loc.cov[1], r @ c[1] @ r.T, atol=1e-18)
+    np.testing.assert_allclose(_cov(loc)[1], r @ c[1] @ r.T, atol=1e-18)
 
 
 def test_geodetic_displacements_are_the_reference_rotation() -> None:
@@ -161,7 +166,7 @@ def test_geodetic_displacements_are_the_reference_rotation() -> None:
     r = local.local_rotation(g.lat, g.lon)
     np.testing.assert_allclose(out.d[1], r @ [0.1, -0.2, 0.3], atol=1e-15)
     np.testing.assert_allclose(out.d[0], 0.0, atol=0)
-    np.testing.assert_allclose(out.cov[1], r @ _spd(3) @ r.T, atol=1e-18)
+    np.testing.assert_allclose(_cov(out)[1], r @ _spd(3) @ r.T, atol=1e-18)
 
 
 @pytest.mark.parametrize("site", sorted(GLORG))
@@ -179,7 +184,7 @@ def test_globk_sigma_reproduces_glorg_vfln() -> None:
     out = local.displacements(
         VFLN_XYZ[None], VFLN_XYZ, cov=VFLN_COV[None], convention="globk"
     )
-    sig = np.sqrt(np.diag(out.cov[0]))
+    sig = np.sqrt(np.diag(_cov(out)[0]))
     np.testing.assert_allclose(sig, VFLN_LOC_SIGMA, atol=6e-6)  # 0.01 mm printing
 
 
@@ -194,7 +199,7 @@ def test_globk_jacobian_matches_finite_differences() -> None:
         p = local.displacements(x + dx, ref, convention="globk", order="enu").d
         m = local.displacements(x - dx, ref, convention="globk", order="enu").d
         num[:, k] = (p - m) / 2.0
-    np.testing.assert_allclose(out.cov, num @ num.T, atol=1e-8)
+    np.testing.assert_allclose(_cov(out), num @ num.T, atol=1e-8)
 
 
 def test_globk_wraps_longitude_across_the_antimeridian() -> None:
@@ -215,14 +220,16 @@ def test_baseline_counts_the_cross_covariance_once() -> None:
     r = local.local_rotation(g.lat, g.lon)
     np.testing.assert_allclose(out.d, r @ (xa - xb), atol=1e-12)
     caa, cbb, cab = c[:3, :3], c[3:, 3:], c[:3, 3:]
-    np.testing.assert_allclose(out.cov, r @ (caa + cbb - cab - cab.T) @ r.T, atol=1e-18)
+    np.testing.assert_allclose(
+        _cov(out), r @ (caa + cbb - cab - cab.T) @ r.T, atol=1e-18
+    )
 
 
 def test_identical_errors_cancel_in_a_baseline() -> None:
     blk = _spd(3, 5)
     c = np.block([[blk, blk], [blk, blk]])
     out = local.baseline(REYK, REYK + 100.0, cov=c)
-    np.testing.assert_allclose(out.cov, 0.0, atol=1e-18)
+    np.testing.assert_allclose(_cov(out), 0.0, atol=1e-18)
 
 
 def test_baseline_at_b_uses_b_frame() -> None:
@@ -251,9 +258,9 @@ def test_helmert_covariance_adds_parameter_uncertainty() -> None:
     cp = np.diag([1e-6, 1e-6, 1e-6, 0, 0, 0, 0])  # 1 mm translation σ only
     c = _spd(3, 6)
     out = local.helmert_apply(REYK[None], p, cov=c[None], params_cov=cp)
-    np.testing.assert_allclose(out.cov[0], c + np.eye(3) * 1e-6, atol=1e-18)
+    np.testing.assert_allclose(_cov(out)[0], c + np.eye(3) * 1e-6, atol=1e-18)
     only_p = local.helmert_apply(REYK, p, params_cov=cp)
-    np.testing.assert_allclose(only_p.cov, np.eye(3) * 1e-6, atol=1e-18)
+    np.testing.assert_allclose(_cov(only_p), np.eye(3) * 1e-6, atol=1e-18)
 
 
 def test_helmert_inverse_is_the_negated_parameters_to_first_order() -> None:

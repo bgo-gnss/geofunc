@@ -19,7 +19,6 @@ import pyproj as proj
 from pyproj import CRS, Transformer
 
 import numpy as np
-import scipy as sp
 
 EARTH_ERAD = 6378137.0
 
@@ -126,7 +125,7 @@ def gdatum(datum="IGS08"):
     Returns:
         To be Implemented
     """
-    raise NotImplemented
+    raise NotImplementedError
 
 
 def xyzell(xyzcoor, datum=itrf2008, radians=True):
@@ -191,7 +190,7 @@ def ellecc(llh, vector):
     (Planned function, not yet implemented)
 
     """
-    raise NotImplemented
+    raise NotImplementedError
 
 
 def eccell(ll, vector):
@@ -232,23 +231,25 @@ def xyz2enumatr(ll):
 
     """
 
-    f = lambda x: [
-        np.sin(x),
-        np.cos(x),
-    ]  # For calculating sin(lambda),shi(phi),cos(lambda),cos(phi)
+    def f(x):
+        return [
+            np.sin(x),
+            np.cos(x),
+        ]  # For calculating sin(lambda),shi(phi),cos(lambda),cos(phi)
 
     # Creating the rotation matrix [ [-slmb, clmb, 0], [-sphi*clmb, -sphi*slmb, cphi], [cphi*clmb, cphi*slmb, sphi]]
     # a = (slmb, sphi, clmb, cphi)
-    m = lambda x: [
-        np.matrix(
-            [
-                [-a[0], a[2], 0],
-                [-a[1] * a[2], -a[1] * a[0], a[3]],
-                [a[3] * a[2], a[3] * a[0], a[1]],
-            ]
-        )
-        for a in x
-    ]
+    def m(x):
+        return [
+            np.matrix(
+                [
+                    [-a[0], a[2], 0],
+                    [-a[1] * a[2], -a[1] * a[0], a[3]],
+                    [a[3] * a[2], a[3] * a[0], a[1]],
+                ]
+            )
+            for a in x
+        ]
 
     if len(ll.shape) == 1:  # In case the array is only 1 demintion
         ll = np.expand_dims(ll, axis=0)
@@ -384,7 +385,7 @@ def rotpole(wxwywz, xyz, plate=None):
         nnr-nuvela velocity of a given plate in geocentric coordinates
 
     """
-    if plate != None:
+    if plate is not None:
         pass
     else:
         if xyz is not None and wxwywz is not None:
