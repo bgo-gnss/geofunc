@@ -38,7 +38,11 @@ geofunc/
 | `local.py` | `ecef_to_geodetic` / `geodetic_to_ecef` | Named `Geodetic(lat, lon, h)`, radians, GRS80 default |
 | `local.py` | `displacements` | N/E/U (or E/N/U) from ECEF + covariance; `convention="globk"` reproduces glorg `Loc.`/TOT (N=a·Δφ, E=a·cosφ₀·Δλ, U=Δh) |
 | `local.py` | `baseline` / `ecef_to_local` / `geodetic_jacobian` / `propagate` | Local vectors, joint 6×6 baseline covariance, Jacobians |
-| `local.py` | `helmert_design` / `helmert_apply` | IERS 7-param small-angle transformation (+ point and parameter covariance) |
+| `local.py` | `helmert_design` / `helmert_apply` / `helmert_at` | IERS 7-param small-angle transformation (+ point and parameter covariance); one set or one per epoch (`helmert_at`: p + ṗ·(t−t0)) |
+| `local.py` | `reference_position` | Reference point of a series: wmean (full 3×3 cov) / mean / median / first, optional first-`count` epochs |
+| `local.py` | `apply_local_offsets` | N/E/U offsets → ECEF along each point's own axes (junctions, antenna heights) before any displacement |
+| `local.py` | `euler_matrix` / `euler_velocity` / `linear_motion` | ω × x with pole covariance; v·(t−t0) to remove/add secular motion in ECEF |
+| `local.py` | `chain` / `ecef_jacobian` / `globk_scale` | Compose Jacobians (application order); ∂XYZ/∂(φ,λ,h); geodetic→GLOBK Loc. factor |
 | `coords.py` | `FRAMES` / `get_frame` | Data-driven frame registry (add a frame = one data row) |
 
 ## Dependencies
