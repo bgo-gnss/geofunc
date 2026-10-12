@@ -15,12 +15,13 @@ geofunc/
 ├── src/geofunc/
 │   ├── __init__.py       # public API: LAZY re-export of coords (keeps pyproj out of `import geofunc.local`)
 │   ├── local.py          # numpy-only ECEF↔geodetic↔local (NEU/ENU, geodetic|globk), baselines, Helmert — all with C′=JCJᵀ
-│   ├── geo.py            # core geodesy: ellipsoidal/Cartesian conversions, plate motion
-│   ├── geofunc.py        # higher-level helpers: station coords, plate-velocity wrappers
+│   ├── geo.py            # DEPRECATED shim (xyzell, platePoles, rotpole, CRS constants) — remove after one release
+│   ├── geofunc.py        # DEPRECATED shim (plateVelo E,N,U, plateDict, plateFullname; lazy gps_parser) — remove after one release
 │   ├── coords.py         # reference-frame registry + transform() facade (ITRF/WGS84/ISN)
 │   ├── frames.py         # PROJ bridge: EPSG geocentric CRSs, helmert_params extraction, 4-D transform_xyz, geodesic
 │   └── plates.py         # ITRF2008/2014/2020 PMM tables (mas/yr, DOIs) + plate_velocity[_local] (numpy only)
-├── tests/                # test_geo.py, test_coords.py + ad-hoc scripts
+├── tests/                # test_local/plates/frames/coords, xyzell axis pin, legacy-shim tests
+├── scripts/legacy/       # old research scripts + data moved out of tests/ (not maintained, lint-excluded)
 ├── perlscripts/          # legacy Perl utilities (reference only)
 └── pyproject.toml
 ```
@@ -29,13 +30,6 @@ geofunc/
 
 | Module | Function | Purpose |
 |--------|----------|---------|
-| `geo.py` | `xyzell` | ECEF (X,Y,Z) → ellipsoidal (lat, lon, h) |
-| `geo.py` | `platePoles` | Tectonic plate Euler poles (legacy → `plates.euler_pole`) |
-| `geo.py` | `rotpole` | Rotate pole between reference frames |
-| `geo.py` | `greatcircd` | Great-circle distance |
-| `geofunc.py` | `convllh` | Coordinate conversion driver |
-| `geofunc.py` | `plateVelo` | Plate velocity at a point — returns **E,N,U** despite its docstring (legacy → `plates.plate_velocity_local`) |
-| `geofunc.py` | `getStationCoordinates` | Look up station coordinates |
 | `coords.py` | `transform` | Convert (x,y,z) between named frames (wgs84, itrf08/14/20, isn93/2004/2016) |
 | `local.py` | `ecef_to_geodetic` / `geodetic_to_ecef` | Named `Geodetic(lat, lon, h)`, radians, GRS80 default |
 | `local.py` | `displacements` | N/E/U (or E/N/U) from ECEF + covariance; `convention="globk"` reproduces glorg `Loc.`/TOT (N=a·Δφ, E=a·cosφ₀·Δλ, U=Δh) |
@@ -47,14 +41,16 @@ geofunc/
 | `local.py` | `chain` / `ecef_jacobian` / `globk_scale` | Compose Jacobians (application order); ∂XYZ/∂(φ,λ,h); geodetic→GLOBK Loc. factor |
 | `frames.py` | `helmert_params` / `HelmertParams.at` | EPSG time-dependent Helmert from PROJ in `local.helmert_at` units (≤5e-9 m vs PROJ) → frame change of a series WITH covariance |
 | `frames.py` | `transform_xyz` / `crs` / `geodesic` | PROJ 4-D ECEF transform (no cov), named EPSG geocentric frames (itrf2000…2020, etrf2000/2014/2020), pyproj.Geod |
+| `plates.py` | `plate_name` / `PLATE_NAMES` | Plate code → title name (legacy `plateFullname` strings) |
 | `plates.py` | `euler_pole` / `plate_velocity` / `plate_velocity_local` | PMM pole (rad/yr) → ECEF or N/E/U velocity, optional pole σ and ITRF2020 ORB; EURA pinned to −(PROJ ITRF→ETRF rates) |
 | `coords.py` | `FRAMES` / `get_frame` | Data-driven frame registry (add a frame = one data row) |
 
 ## Dependencies
 
-- **In** (this package needs): `pyproj`, `numpy`, `scipy` (external only).
-  `geofunc.py` additionally imports `gps_parser` (config-driven helpers) — the
-  `coords.py` conversion core is deliberately pure (pyproj + numpy only).
+- **In** (this package needs): `pyproj`, `numpy` (external only; scipy dropped 2026-10-12).
+  Only the deprecated `geofunc.py` shim touches `gps_parser`, lazily inside its functions.
+  Legacy → new: `xyzell`→`local.ecef_to_geodetic`/`coords.transform`, `platePoles`→`plates.euler_pole`,
+  `plateVelo` (E,N,U!)→`geo_dataread.station_catalog.plate_velocity_neu` (N,E,U), `plateDict`→`station_catalog.plate_table`.
 - **Out** (used by): `geo_dataread` (coordinate transforms, plate-velocity calcs).
 
 ### Local frames + covariance (`local.py`)

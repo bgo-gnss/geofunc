@@ -58,17 +58,25 @@ def test_eura_pole_is_minus_the_proj_etrf_rotation_rates(
     assert not h.rates[:4].any()  # rotation only, no translation/scale rate
 
 
-@pytest.mark.parametrize("frame", ["itrf2008", "itrf2014"])
-@pytest.mark.parametrize("plate", ["EURA", "NOAM"])
-@pytest.mark.parametrize("x", [REYK, SKSH])
-def test_parity_with_legacy_geo(frame: str, plate: str, x: np.ndarray) -> None:
-    # legacy geo.platePoles → rotpole → eccell, which returns rows E, N, U
-    geo = pytest.importorskip("geofunc.geo")
-    w = geo.platePoles(plate, reference=frame.upper())
-    llh = np.array(geo.itrf08towgs84.transform(*x, radians=True))
-    enu = geo.eccell(llh, geo.rotpole(w, x))
+# N, E, U [m/yr] from the legacy geo.platePoles → rotpole → eccell chain
+# (eccell rows are E, N, U; reordered), frozen 2026-10-12 before geo.py retired
+LEGACY = {
+    ("REYK", "EURA", "itrf2008"): (0.016230482733457816, 0.006743774093761006, 4.287914896126171e-05),
+    ("REYK", "EURA", "itrf2014"): (0.016167736912028996, 0.00709676764751457, 4.271338140721361e-05),
+    ("REYK", "NOAM", "itrf2008"): (0.01853098690874565, -0.009111886997883446, 4.89568277856137e-05),
+    ("REYK", "NOAM", "itrf2014"): (0.019573083166746746, -0.00866030309968424, 5.170993140012832e-05),
+    ("SKSH", "EURA", "itrf2008"): (0.016270166576665336, 0.006652720742979958, 4.214728604382013e-05),
+    ("SKSH", "EURA", "itrf2014"): (0.01620624413424372, 0.006998280140388368, 4.198169723729812e-05),
+    ("SKSH", "NOAM", "itrf2008"): (0.018633504956046633, -0.008895985841326602, 4.8269429798450995e-05),
+    ("SKSH", "NOAM", "itrf2014"): (0.019675649024553665, -0.008445358236996606, 5.0969066827196425e-05),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize(("sta", "plate", "frame"), list(LEGACY))
+def test_parity_with_legacy_geo(sta: str, plate: str, frame: str) -> None:
+    x = {"REYK": REYK, "SKSH": SKSH}[sta]
     neu = plates.plate_velocity_local(plate, x, frame=frame).d
-    np.testing.assert_allclose(neu, enu[[1, 0, 2]], atol=1e-12)
+    np.testing.assert_allclose(neu, LEGACY[sta, plate, frame], atol=1e-12)
 
 
 def test_plate_velocity_is_horizontal_and_iceland_sized() -> None:
@@ -112,3 +120,12 @@ def test_covariance_and_orb() -> None:
     )
     with pytest.raises(ValueError, match="no origin rate bias"):
         plates.plate_velocity("EURA", REYK, frame="itrf2014", orb=True)
+
+
+def test_plate_names_cover_every_model_and_keep_legacy_titles() -> None:
+    codes = {c for f in plates.frames() for c in plates.plates(f)}
+    assert codes <= set(plates.PLATE_NAMES)
+    assert plates.plate_name("noam") == "North American plate"
+    assert plates.plate_name("EURA") == "Eurasian Plate"
+    with pytest.raises(KeyError, match="unknown plate code"):
+        plates.plate_name("XXXX")
