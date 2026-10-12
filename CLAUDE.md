@@ -17,7 +17,9 @@ geofunc/
 │   ├── local.py          # numpy-only ECEF↔geodetic↔local (NEU/ENU, geodetic|globk), baselines, Helmert — all with C′=JCJᵀ
 │   ├── geo.py            # core geodesy: ellipsoidal/Cartesian conversions, plate motion
 │   ├── geofunc.py        # higher-level helpers: station coords, plate-velocity wrappers
-│   └── coords.py         # reference-frame registry + transform() facade (ITRF/WGS84/ISN)
+│   ├── coords.py         # reference-frame registry + transform() facade (ITRF/WGS84/ISN)
+│   ├── frames.py         # PROJ bridge: EPSG geocentric CRSs, helmert_params extraction, 4-D transform_xyz, geodesic
+│   └── plates.py         # ITRF2008/2014/2020 PMM tables (mas/yr, DOIs) + plate_velocity[_local] (numpy only)
 ├── tests/                # test_geo.py, test_coords.py + ad-hoc scripts
 ├── perlscripts/          # legacy Perl utilities (reference only)
 └── pyproject.toml
@@ -28,11 +30,11 @@ geofunc/
 | Module | Function | Purpose |
 |--------|----------|---------|
 | `geo.py` | `xyzell` | ECEF (X,Y,Z) → ellipsoidal (lat, lon, h) |
-| `geo.py` | `platePoles` | Tectonic plate Euler poles |
+| `geo.py` | `platePoles` | Tectonic plate Euler poles (legacy → `plates.euler_pole`) |
 | `geo.py` | `rotpole` | Rotate pole between reference frames |
 | `geo.py` | `greatcircd` | Great-circle distance |
 | `geofunc.py` | `convllh` | Coordinate conversion driver |
-| `geofunc.py` | `plateVelo` | Plate velocity at a point |
+| `geofunc.py` | `plateVelo` | Plate velocity at a point — returns **E,N,U** despite its docstring (legacy → `plates.plate_velocity_local`) |
 | `geofunc.py` | `getStationCoordinates` | Look up station coordinates |
 | `coords.py` | `transform` | Convert (x,y,z) between named frames (wgs84, itrf08/14/20, isn93/2004/2016) |
 | `local.py` | `ecef_to_geodetic` / `geodetic_to_ecef` | Named `Geodetic(lat, lon, h)`, radians, GRS80 default |
@@ -43,6 +45,9 @@ geofunc/
 | `local.py` | `apply_local_offsets` | N/E/U offsets → ECEF along each point's own axes (junctions, antenna heights) before any displacement |
 | `local.py` | `euler_matrix` / `euler_velocity` / `linear_motion` | ω × x with pole covariance; v·(t−t0) to remove/add secular motion in ECEF |
 | `local.py` | `chain` / `ecef_jacobian` / `globk_scale` | Compose Jacobians (application order); ∂XYZ/∂(φ,λ,h); geodetic→GLOBK Loc. factor |
+| `frames.py` | `helmert_params` / `HelmertParams.at` | EPSG time-dependent Helmert from PROJ in `local.helmert_at` units (≤5e-9 m vs PROJ) → frame change of a series WITH covariance |
+| `frames.py` | `transform_xyz` / `crs` / `geodesic` | PROJ 4-D ECEF transform (no cov), named EPSG geocentric frames (itrf2000…2020, etrf2000/2014/2020), pyproj.Geod |
+| `plates.py` | `euler_pole` / `plate_velocity` / `plate_velocity_local` | PMM pole (rad/yr) → ECEF or N/E/U velocity, optional pole σ and ITRF2020 ORB; EURA pinned to −(PROJ ITRF→ETRF rates) |
 | `coords.py` | `FRAMES` / `get_frame` | Data-driven frame registry (add a frame = one data row) |
 
 ## Dependencies
@@ -82,4 +87,4 @@ geofunc       # entry: geofunc:main
 
 ---
 
-*Last reviewed: 2026-10-09*
+*Last reviewed: 2026-10-12*
