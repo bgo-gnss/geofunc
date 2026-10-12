@@ -297,7 +297,8 @@ def test_globk_scale_is_the_displacement_jacobian_factor() -> None:
     m, n = local.radii(g.lat)
     a = local.GRS80.a
     np.testing.assert_allclose(
-        local.globk_scale(g.lat, g.h, float(g.lat)), [a / (m + g.h), a / (n + g.h), 1.0]
+        local.globk_scale(g.lat, g.h, float(g.lat)),
+        np.array([a / (m + g.h), a / (n + g.h), 1.0], dtype=float),
     )
 
 
@@ -345,6 +346,7 @@ def test_euler_velocity_is_the_cross_product_with_covariance() -> None:
     v = local.euler_velocity(w, x, cov_omega=np.eye(3) * 1e-20)
     np.testing.assert_allclose(v.d, np.cross(w, x), atol=1e-15)
     e = local.euler_matrix(x)
+    assert v.cov is not None
     np.testing.assert_allclose(v.cov, e @ (np.eye(3) * 1e-20) @ np.swapaxes(e, 1, 2))
     # Eurasia at Reykjavik moves ~2 cm/yr, horizontally up to the
     # ellipsoid-vs-sphere tilt (ω × x is normal to the geocentric radius)
@@ -355,7 +357,7 @@ def test_euler_velocity_is_the_cross_product_with_covariance() -> None:
 def test_linear_motion_broadcasts_over_epochs() -> None:
     t = np.array([2020.0, 2021.5])
     out = local.linear_motion([0.01, -0.02, 0.0], t, t0=2020.0)
-    np.testing.assert_allclose(out, [[0, 0, 0], [0.015, -0.03, 0]])
+    np.testing.assert_allclose(out, np.array([[0, 0, 0], [0.015, -0.03, 0]], float))
 
 
 def test_helmert_at_per_epoch_equals_one_call_per_epoch() -> None:
@@ -370,6 +372,7 @@ def test_helmert_at_per_epoch_equals_one_call_per_epoch() -> None:
     for k in range(3):
         one = local.helmert_apply(x[k], ps[k], cov=c[k])
         np.testing.assert_allclose(batch.d[k], one.d, atol=1e-9)
+        assert batch.cov is not None and one.cov is not None
         np.testing.assert_allclose(batch.cov[k], one.cov, atol=1e-20)
 
 
