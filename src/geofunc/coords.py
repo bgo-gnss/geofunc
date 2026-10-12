@@ -228,7 +228,9 @@ def get_frame(name: str) -> CoordFrame:
         return FRAMES[name]
     except KeyError:
         valid = ", ".join(frame_names())
-        raise KeyError(f"unknown coordinate frame {name!r}; valid frames: {valid}") from None
+        raise KeyError(
+            f"unknown coordinate frame {name!r}; valid frames: {valid}"
+        ) from None
 
 
 def _transformer(src: CoordFrame, dst: CoordFrame) -> Transformer:

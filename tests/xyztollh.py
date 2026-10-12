@@ -37,10 +37,6 @@ def ddd2dm(lon, lat, height):
     fractional deegres to d.m
     """
 
-    to_positive = 0
-    if lon < 0:
-        to_positive = 360
-
     lon = "{0} {1}".format(int(lon), int(lon % 1 * 60))
     lat = "{0} {1}".format(int(lat), int(lat % 1 * 60))
     height = "{0:.5f}".format(height)
@@ -64,7 +60,6 @@ def main():
 
     wgs84 = CRS("EPSG:4326")  # geodetic on ellipsiod wgs84
     itrf2008 = CRS("EPSG:5332")
-    isnet16 = CRS("EPSG:8085")
 
     colNames = ["x", "y", "z"]
     xyz_coord = pd.read_csv(
