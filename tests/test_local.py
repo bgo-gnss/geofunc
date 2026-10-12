@@ -404,3 +404,31 @@ def test_refusals() -> None:
     pole = np.array([0.0, 0.0, local.GRS80.a * (1 - local.GRS80.f)])
     with pytest.raises(ValueError, match="poles"):
         local.displacements(pole, pole, convention="globk")
+
+
+# --- condition (constraint update) -----------------------------------------
+
+
+def test_condition_exact_and_weighted() -> None:
+    rng = np.random.default_rng(3)
+    m = rng.normal(size=(6, 6))
+    c = m @ m.T + 6 * np.eye(6)
+    x = rng.normal(size=6)
+    lm = np.array(
+        [[1.0, -1.0, 0, 0, 0, 0], [0, 0, 1.0, 0, 0, 0]]
+    )  # equate 0=1, force 2
+    out = local.condition(x, c, lm, value=[0.0, 0.5])
+    assert out.cov is not None
+    np.testing.assert_allclose(lm @ out.d, [0.0, 0.5], atol=1e-12)
+    np.testing.assert_allclose(lm @ out.cov @ lm.T, 0.0, atol=1e-12)
+    # equals the least-squares solution of x as an observation + exact constraints
+    w = np.linalg.inv(c)
+    kkt = np.block([[w, lm.T], [lm, np.zeros((2, 2))]])
+    ref = np.linalg.solve(kkt, np.concatenate([w @ x, [0.0, 0.5]]))[:6]
+    np.testing.assert_allclose(out.d, ref, atol=1e-10)
+    # a weighted condition sits between the prior and the exact one
+    soft = local.condition(x, c, lm, value=[0.0, 0.5], var=[1.0, 1.0])
+    assert soft.cov is not None
+    gap = np.abs(lm @ soft.d - [0.0, 0.5])
+    assert (gap > 1e-6).all() and (gap < np.abs(lm @ x - [0.0, 0.5])).all()
+    assert np.all(np.diag(soft.cov) <= np.diag(c) + 1e-12)

@@ -38,6 +38,7 @@ geofunc/
 | `local.py` | `reference_position` | Reference point of a series: wmean (full 3×3 cov) / mean / median / first, optional first-`count` epochs |
 | `local.py` | `apply_local_offsets` | N/E/U offsets → ECEF along each point's own axes (junctions, antenna heights) before any displacement |
 | `local.py` | `euler_matrix` / `euler_velocity` / `linear_motion` | ω × x with pole covariance; v·(t−t0) to remove/add secular motion in ECEF |
+| `local.py` | `condition` | Impose `L·x = value` on a full solution + covariance (Kalman update, exact or weighted) — glorg stabilization/equates/forces |
 | `local.py` | `chain` / `ecef_jacobian` / `globk_scale` | Compose Jacobians (application order); ∂XYZ/∂(φ,λ,h); geodetic→GLOBK Loc. factor |
 | `frames.py` | `helmert_params` / `HelmertParams.at` | EPSG time-dependent Helmert from PROJ in `local.helmert_at` units (≤5e-9 m vs PROJ) → frame change of a series WITH covariance |
 | `frames.py` | `transform_xyz` / `crs` / `geodesic` | PROJ 4-D ECEF transform (no cov), named EPSG geocentric frames (itrf2000…2020, etrf2000/2014/2020), pyproj.Geod |

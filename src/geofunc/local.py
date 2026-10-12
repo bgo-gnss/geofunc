@@ -65,6 +65,7 @@ __all__ = [
     "apply_local_offsets",
     "baseline",
     "chain",
+    "condition",
     "displacements",
     "ecef_jacobian",
     "ecef_to_geodetic",
@@ -161,6 +162,52 @@ def propagate(jac: ArrayLike, cov: ArrayLike) -> FloatArray:
     c = np.asarray(cov, dtype=np.float64)
     out: FloatArray = np.matmul(np.matmul(j, c), np.swapaxes(j, -1, -2))
     return out
+
+
+def condition(
+    x: ArrayLike,
+    cov: ArrayLike,
+    rows: ArrayLike,
+    *,
+    value: ArrayLike | None = None,
+    var: ArrayLike | None = None,
+) -> Local:
+    """Impose the linear condition ``L·x = value`` on an estimate and its covariance.
+
+    The sequential (Kalman) update of a full solution vector ``x (n,)`` with
+    covariance ``C (n, n)`` by pseudo-observations ``L (k, n)``::
+
+        G  = C Lᵀ (L C Lᵀ + diag(var))⁻¹
+        x′ = x − G (L x − value)
+        C′ = C − G L C
+
+    ``var=None`` (zero) makes the condition exact (``L·x′ = value``); a
+    positive variance makes it a weighted constraint. Every element of ``x``
+    moves through its correlation with the conditioned combination — which
+    is how GLOBK's glorg applies frame stabilization, equates (``L`` the
+    difference of two parameters) and forces (``L`` a selector). ``C′`` is
+    returned exactly symmetric; rounding can leave tiny negative variances on
+    its diagonal, which are replaced by their absolute value, as glorg does.
+    """
+    xv = np.asarray(x, dtype=np.float64)
+    c = np.asarray(cov, dtype=np.float64)
+    lm = np.atleast_2d(np.asarray(rows, dtype=np.float64))
+    cat = c @ lm.T
+    s = lm @ cat
+    if var is not None:
+        s = s + np.diag(
+            np.broadcast_to(np.asarray(var, dtype=np.float64), (lm.shape[0],))
+        )
+    g = np.linalg.solve(s.T, cat.T).T  # cat · s⁻¹ (s symmetric)
+    resid = lm @ xv
+    if value is not None:
+        resid = resid - np.asarray(value, dtype=np.float64)
+    xn: FloatArray = xv - g @ resid
+    cn: FloatArray = c - g @ cat.T
+    cn = (cn + cn.T) / 2.0  # exact symmetry (the update is symmetric only to rounding)
+    d = np.diag_indices_from(cn)
+    cn[d] = np.abs(cn[d])
+    return Local(xn, cn)
 
 
 def chain(*jacs: ArrayLike) -> FloatArray:
