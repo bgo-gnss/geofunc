@@ -56,9 +56,11 @@ __all__ = [
     "ORB",
     "PMM",
     "PMM_SIGMA",
+    "PLATE_NAMES",
     "euler_pole",
     "frames",
     "plate_velocity",
+    "plate_name",
     "plate_velocity_local",
     "plates",
     "pole_covariance",
@@ -132,6 +134,24 @@ ORB: dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]] = 
     "itrf2020": ((0.37e-3, 0.35e-3, 0.74e-3), (0.08e-3, 0.10e-3, 0.09e-3)),
 }
 
+#: plate code → name, for titles and labels (the legacy ``plateFullname``
+#: strings for the plates IMO plots, kept verbatim so figure titles do not move)
+PLATE_NAMES: dict[str, str] = {
+    "AMUR": "Amurian Plate",
+    "ANTA": "Antarctic Plate",
+    "ARAB": "Arabia",
+    "AUST": "Australian Plate",
+    "CARB": "Caribbean Plate",
+    "EURA": "Eurasian Plate",
+    "INDI": "Indian Plate",
+    "NAZC": "Nazca",
+    "NOAM": "North American plate",
+    "NUBI": "Nubian Plate",
+    "PCFC": "Pacific Plate",
+    "SOAM": "South American Plate",
+    "SOMA": "Somalian Plate",
+}
+
 _TO_MAS = {
     "mas/yr": 1.0,
     "rad/yr": MAS_TO_RAD,
@@ -155,6 +175,14 @@ def frames() -> tuple[str, ...]:
 def plates(frame: str = "itrf2008") -> tuple[str, ...]:
     """Plate codes in a frame's model."""
     return tuple(PMM[_frame(frame)])
+
+
+def plate_name(plate: str) -> str:
+    """Name of a plate code (``"EURA"`` → ``"Eurasian Plate"``)."""
+    try:
+        return PLATE_NAMES[plate.upper()]
+    except KeyError:
+        raise KeyError(f"unknown plate code {plate!r}") from None
 
 
 def euler_pole(
