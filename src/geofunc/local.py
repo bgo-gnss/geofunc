@@ -87,6 +87,7 @@ __all__ = [
 ]
 
 FloatArray = NDArray[np.float64]
+BoolArray = NDArray[np.bool_]
 Order = Literal["neu", "enu"]
 Convention = Literal["geodetic", "globk"]
 
@@ -434,6 +435,13 @@ def displacements(
     return Local(d[..., perm], out_cov)
 
 
+def _positive_definite(c: FloatArray, rtol: float = 1e-12) -> BoolArray:
+    """Per matrix of ``c (n, 3, 3)``: smallest eigenvalue > rtol × largest."""
+    ev = np.linalg.eigvalsh(0.5 * (c + np.swapaxes(c, -1, -2)))
+    out: BoolArray = ev[..., 0] > rtol * np.abs(ev[..., -1])
+    return out
+
+
 def reference_position(
     xyz: ArrayLike,
     *,
@@ -446,7 +454,8 @@ def reference_position(
     ``how``: ``"mean"``, ``"median"`` (per axis), ``"first"`` epoch, or
     ``"wmean"`` — the least-squares mean ``(Σ C⁻¹)⁻¹·Σ C⁻¹x`` with the full
     3×3 ``cov (n, 3, 3)`` (plain mean without ``cov``). Rows with a
-    non-finite coordinate or covariance are skipped. ``count`` limits the
+    non-finite coordinate or covariance are skipped, and for ``"wmean"``
+    rows whose covariance is not positive definite (no weight exists). ``count`` limits the
     estimate to the first ``count`` usable epochs (e.g. 5: the old
     "zero on the first week" plot habit). Use it as ``ref`` of
     :func:`displacements`, or pass an a-priori coordinate there instead.
@@ -461,6 +470,11 @@ def reference_position(
         if c.shape != x.shape + (3,):
             raise ValueError(f"cov: expected {x.shape + (3,)}, got {c.shape}")
         ok &= np.all(np.isfinite(c), axis=(-2, -1))
+        if how == "wmean":
+            # a weight needs C⁻¹: drop epochs whose covariance is not
+            # positive definite (a rounded correlation of ±1.000 in a .pos
+            # row makes it singular — NORS 2014-01-15)
+            ok &= _positive_definite(np.where(ok[:, None, None], c, np.eye(3)))
     idx = np.flatnonzero(ok)
     if count is not None:
         idx = idx[:count]
