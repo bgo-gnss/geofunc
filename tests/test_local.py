@@ -333,6 +333,22 @@ def test_reference_position_modes() -> None:
         local.reference_position(np.full((3, 3), np.nan))
 
 
+def test_reference_position_wmean_skips_a_singular_covariance() -> None:
+    """A .pos row with a rounded correlation of 1.000 (NORS 2014-01-15)."""
+    rng = np.random.default_rng(5)
+    x = REYK + rng.normal(scale=0.003, size=(20, 3))
+    c = np.array(np.broadcast_to(_spd(3, 4), (20, 3, 3)))
+    sx, sz = 4.43, 4.32
+    c[4] = [[sx * sx, 0, sx * sz], [0, 9.0, 0], [sx * sz, 0, sz * sz]]  # Rxz = 1
+    want = local.reference_position(np.delete(x, 4, 0), cov=np.delete(c, 4, 0))
+    np.testing.assert_allclose(local.reference_position(x, cov=c), want)
+    # the other modes only need the coordinate: the row still counts
+    np.testing.assert_allclose(local.reference_position(x, cov=c, how="first"), x[0])
+    np.testing.assert_allclose(
+        local.reference_position(x, cov=c, how="mean"), x.mean(0)
+    )
+
+
 def test_apply_local_offsets_moves_along_each_points_own_axes() -> None:
     x = np.stack([REYK, VFLN_XYZ])
     d = np.array([[0.0, 0.0, 1.093], [0.0, 0.0, 0.0]])
