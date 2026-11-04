@@ -134,3 +134,16 @@ def test_import_is_numpy_only():
     code = "import sys, geofunc.columns; print('pyproj' in sys.modules)"
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert out.stdout.strip() == "False", out.stderr
+
+
+def test_rel_near_a_date():
+    # kept days are 0,1,3,4,... (day 2 = 2024-01-03 dropped): the 5 nearest are 0,1,3,4,5
+    cols, _ = table("a=h:near2024-01-03,b=h:near2024-01-03/1,c=h:near2023-06-01/2")
+    v = {k: np.asarray(cols[k].values) for k in "abc"}
+    assert v["a"][0] == pytest.approx(-np.mean([0, 1, 3, 4, 5]), abs=1e-6)
+    assert v["b"][1] == pytest.approx(0, abs=1e-6)  # days 1 and 3 equally near: the earlier
+    assert v["c"][0] == pytest.approx(
+        -0.5, abs=1e-6
+    )  # before the series: its first two
+    with pytest.raises(ValueError, match="nearYYYY"):
+        table("h:nearly")

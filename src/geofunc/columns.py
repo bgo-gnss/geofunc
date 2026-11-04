@@ -30,8 +30,9 @@ KEY                    column
 
 ``:REL`` subtracts one value of that column, computed from the kept epochs:
 ``first5`` (the mean of the first 5; any N), ``first``, ``last``, ``mean``,
-``median``, ``YYYY-MM-DD..YYYY-MM-DD`` (the mean over the dates, both
-included) or a number. A point with no kept day there (it started later)
+``median``, ``nearYYYY-MM-DD`` (the mean of the 5 kept epochs nearest the
+date, either side; ``/N`` for another count), ``YYYY-MM-DD..YYYY-MM-DD``
+(the mean over the dates, both included) or a number. A point with no kept day there (it started later)
 gets an empty column and a note, not an error. A relative column is a difference, in ``units``,
 named ``d<key>`` unless ``NAME=`` names it: ``dup=h:first5``.
 
@@ -97,6 +98,9 @@ _ITEM = re.compile(
     r"^(?:(?P<name>[A-Za-z_][\w]*)=)?(?P<key>[a-z]+)(?:@(?P<frame>[\w]+))?(?::(?P<rel>.+))?$"
 )
 _FIRST_N = re.compile(r"^first(\d+)$")
+_NEAR = re.compile(r"^near(\d{4}-\d{2}-\d{2})(?:/(\d+))?$")
+#: kept epochs averaged by :nearDATE
+NEAR_DAYS = 5
 _DATES = re.compile(r"^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$")
 
 
@@ -288,13 +292,24 @@ def _rel_value(
         sel = sel[:1]
     elif rel == "last":
         sel = sel[-1:]
+    elif (nm := _NEAR.match(rel)) is not None:
+        # the N kept epochs nearest the date, either side: as close to it as
+        # the point has (a later start: its first N)
+        day0 = dt.date.fromisoformat(nm[1])
+        n = int(nm[2]) if nm[2] else NEAR_DAYS
+        if n < 1:
+            raise ValueError(f":{rel}: N must be at least 1")
+        idx = np.flatnonzero(ok)
+        gap = np.array([abs((dates[i].date() - day0).days) for i in idx])
+        sel = values[idx[np.argsort(gap, kind="stable")[:n]]]
     elif (w := _DATES.match(rel)) is not None:
         a, b = (dt.date.fromisoformat(x) for x in w.groups())
         day = np.array([d.date() for d in dates])
         sel = values[ok & (day >= a) & (day <= b)]
     elif rel not in ("mean", "median"):
         raise ValueError(
-            f":{rel}: use firstN, first, last, mean, median, YYYY-MM-DD..YYYY-MM-DD or a number"
+            f":{rel}: use firstN, first, last, mean, median, nearYYYY-MM-DD[/N], "
+            "YYYY-MM-DD..YYYY-MM-DD or a number"
         )
     if sel.size == 0:
         raise NoReference(f":{rel}: no kept epoch to take it from")
