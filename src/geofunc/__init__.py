@@ -15,7 +15,7 @@ __path__ = __import__("pkgutil").extend_path(__path__, __name__)
 # Submodules stay reachable as attributes after a bare ``import geofunc``
 # (the old eager import made ``geofunc.coords`` work that way).
 _COORDS = ("CoordFrame", "FRAMES", "frame_names", "get_frame", "transform")
-_SUBMODULES = ("coords", "frames", "geo", "geofunc", "local", "plates")
+_SUBMODULES = ("coords", "frames", "geo", "geofunc", "local", "plates", "points")
 
 
 def __getattr__(name: str):  # PEP 562
@@ -38,4 +38,9 @@ __all__ = [
 
 
 def main() -> None:
-    print("Hello from geofunc!")
+    """``geofunc`` console script: :mod:`geofunc.cli`."""
+    import sys
+
+    from geofunc.cli import main as cli_main
+
+    sys.exit(cli_main())
