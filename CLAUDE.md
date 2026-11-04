@@ -21,6 +21,7 @@ geofunc/
 │   ├── coords.py         # reference-frame registry + transform() facade (ITRF/WGS84/ISN)
 │   ├── frames.py         # PROJ bridge: EPSG geocentric CRSs, helmert_params extraction, 4-D transform_xyz, geodesic
 │   ├── points.py         # point tables: lenient reader (tab/;/,/space, decimal commas, frame from header), to_frame, geodesic nearest
+│   ├── columns.py        # position series → tables of chosen columns ([NAME=]KEY[@FRAME][:REL], presets, ISN epoch shift on a velocity); numpy only unless a projected column is asked for
 │   ├── cli.py            # `geofunc points` (convert a table) / `geofunc nearest` (nearest candidates)
 │   └── plates.py         # ITRF2008/2014/2020 PMM tables (mas/yr, DOIs) + plate_velocity[_local] (numpy only)
 ├── tests/                # test_local/plates/frames/coords, xyzell axis pin, legacy-shim tests
@@ -49,6 +50,7 @@ geofunc/
 | `plates.py` | `plate_name` / `PLATE_NAMES` | Plate code → title name (legacy `plateFullname` strings) |
 | `plates.py` | `euler_pole` / `plate_velocity` / `plate_velocity_local` | PMM pole (rad/yr) → ECEF or N/E/U velocity, optional pole σ and ITRF2020 ORB; EURA pinned to −(PROJ ITRF→ETRF rates) |
 | `coords.py` | `FRAMES` / `get_frame` | Data-driven frame registry (add a frame = one data row) |
+| `columns.py` | `parse_columns` / `build_table` / `write_table` / `PositionSeries` | The column engine behind `gpscoord series`: time, ECEF, lat/lon/h, `east@F`/`north@F` (ISN frames taken back to their epoch on `velocity` first), dn/de/du from `ref_pos`, σ, `:REL` (firstN/first/last/mean/median/date window/number); differences in mm by default |
 | `points.py` | `read_points` / `to_frame` / `nearest` / `write_points` | Named point tables in any frame (x = lon or Easting); ISN93 `X (ISN93) [m]` headers detected; `--ncols` for web pastes; nearest = GRS80 geodesic over `(id, lon, lat)` candidates (caller picks them — no gps_parser here) |
 
 ## Dependencies
@@ -73,7 +75,7 @@ Static frame-to-frame only (no epoch/plate-motion — that lands with the data
 analyses). Registered frames: `wgs84` (lon/lat/h), `itrf2008`/`itrf2014`/
 `itrf2020` (ECEF X/Y/Z), `isn93`/`isn2004`/`isn2016` (Lambert E/N). Axis order
 is always x-first (`always_xy=True`), unlike `geo.xyzell`'s (lat, lon, h).
-Adding a frame is a data row in `coords._FRAME_SPECS`. `tos search` will consume
+Adding a frame is a data row in `coords._FRAME_SPECS`; `FRAME_EPOCHS` gives the ISN frames' reference epochs (`CoordFrame.epoch`). `tos search` will consume
 this as computed coordinate columns (separate work).
 
 ## Console Scripts
@@ -90,4 +92,4 @@ geofunc nearest FILE --candidates FILE [-k N] [--max-km D]  # nearest candidates
 
 ---
 
-*Last reviewed: 2026-11-04 (points + CLI)*
+*Last reviewed: 2026-11-04 (columns engine, frame epochs)*
