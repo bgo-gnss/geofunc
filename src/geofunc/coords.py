@@ -53,6 +53,7 @@ from pyproj.crs import GeocentricCRS
 
 __all__ = [
     "CoordFrame",
+    "FRAME_EPOCHS",
     "FRAMES",
     "frame_names",
     "get_frame",
@@ -71,6 +72,10 @@ class CoordFrame:
     axis: Tuple[str, str, str]
     units: Tuple[str, str, str]
     description: str = ""
+    #: the realisation's reference epoch [decimal year] for a national frame
+    #: fixed to the plate at one epoch (ISN93 = ITRF93 @ 1993.6); None for
+    #: frames given at the observation epoch (ITRF, WGS 84)
+    epoch: Optional[float] = None
 
     @property
     def is_geographic(self) -> bool:
@@ -175,6 +180,11 @@ _FRAME_SPECS = [
 ]
 
 
+#: reference epochs of the Icelandic realisations (LMÍ): ISN93 = ITRF93 @
+#: 1993.6, ISN2004 = ITRF2000 @ 2004.6, ISN2016 = ITRF2014 @ 2016.5
+FRAME_EPOCHS: Dict[str, float] = {"isn93": 1993.6, "isn2004": 2004.6, "isn2016": 2016.5}
+
+
 def _build_frames() -> Dict[str, CoordFrame]:
     frames: Dict[str, CoordFrame] = {}
     for name, kind, axis, units, description, geog3d_code, crs_code in _FRAME_SPECS:
@@ -200,7 +210,9 @@ def _build_frames() -> Dict[str, CoordFrame]:
         else:
             raise ValueError(f"unknown frame kind {kind!r} for {name!r}")
 
-        frames[name] = CoordFrame(name, kind, crs, geog3d, axis, units, description)
+        frames[name] = CoordFrame(
+            name, kind, crs, geog3d, axis, units, description, FRAME_EPOCHS.get(name)
+        )
     return frames
 
 
