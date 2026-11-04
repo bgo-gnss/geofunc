@@ -20,6 +20,8 @@ geofunc/
 │   ├── geofunc.py        # DEPRECATED shim (plateVelo E,N,U, plateDict, plateFullname; lazy gps_parser) — remove after one release
 │   ├── coords.py         # reference-frame registry + transform() facade (ITRF/WGS84/ISN)
 │   ├── frames.py         # PROJ bridge: EPSG geocentric CRSs, helmert_params extraction, 4-D transform_xyz, geodesic
+│   ├── points.py         # point tables: lenient reader (tab/;/,/space, decimal commas, frame from header), to_frame, geodesic nearest
+│   ├── cli.py            # `geofunc points` (convert a table) / `geofunc nearest` (nearest candidates)
 │   └── plates.py         # ITRF2008/2014/2020 PMM tables (mas/yr, DOIs) + plate_velocity[_local] (numpy only)
 ├── tests/                # test_local/plates/frames/coords, xyzell axis pin, legacy-shim tests
 ├── scripts/legacy/       # old research scripts + data moved out of tests/ (not maintained, lint-excluded)
@@ -47,6 +49,7 @@ geofunc/
 | `plates.py` | `plate_name` / `PLATE_NAMES` | Plate code → title name (legacy `plateFullname` strings) |
 | `plates.py` | `euler_pole` / `plate_velocity` / `plate_velocity_local` | PMM pole (rad/yr) → ECEF or N/E/U velocity, optional pole σ and ITRF2020 ORB; EURA pinned to −(PROJ ITRF→ETRF rates) |
 | `coords.py` | `FRAMES` / `get_frame` | Data-driven frame registry (add a frame = one data row) |
+| `points.py` | `read_points` / `to_frame` / `nearest` / `write_points` | Named point tables in any frame (x = lon or Easting); ISN93 `X (ISN93) [m]` headers detected; `--ncols` for web pastes; nearest = GRS80 geodesic over `(id, lon, lat)` candidates (caller picks them — no gps_parser here) |
 
 ## Dependencies
 
@@ -76,7 +79,8 @@ this as computed coordinate columns (separate work).
 ## Console Scripts
 
 ```bash
-geofunc       # entry: geofunc:main
+geofunc points FILE [--from FRAME] [--to FRAME]       # a point table in another frame (CSV out)
+geofunc nearest FILE --candidates FILE [-k N] [--max-km D]  # nearest candidates per point
 ```
 
 ## Cross-References
@@ -86,4 +90,4 @@ geofunc       # entry: geofunc:main
 
 ---
 
-*Last reviewed: 2026-10-30*
+*Last reviewed: 2026-11-04 (points + CLI)*
